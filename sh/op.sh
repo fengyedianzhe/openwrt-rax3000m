@@ -359,16 +359,16 @@ echo " -----------------------------------------------------" >> package/base-fi
 # ==========================================
 echo "开始搜寻 DTS 文件并修复网口..."
 
-DTS_FILE=$(find target/linux/mediatek -name "mt7981b-cmcc-rax3000m*.dts" | head -n 1)
+# 使用 for 循环，把所有的 RAX3000M dts 文件（nand 和 emmc）统统修改一遍
+for DTS_FILE in $(find target/linux/mediatek -name "mt7981b-cmcc-rax3000m*.dts"); do
+    echo "发现目标文件: $DTS_FILE，正在执行修改..."
 
-if [ -f "$DTS_FILE" ]; then
     # 1. 解决名字反过来的问题：互换 lan1 和 lan3
     sed -i 's/label = "lan1"/label = "lan_TMP"/g' $DTS_FILE
     sed -i 's/label = "lan3"/label = "lan1"/g' $DTS_FILE
     sed -i 's/label = "lan_TMP"/label = "lan3"/g' $DTS_FILE
     
     # 2. 解决断口问题：强行通电唤醒被屏蔽的端口
-    # 注意：这里改成了 &switch，去掉了0，以适配 OpenWrt 源码规范
     cat >> $DTS_FILE <<EOF
 
 /* ======= 强行唤醒被 RAX3000M 屏蔽的网口 ======= */
@@ -391,7 +391,5 @@ if [ -f "$DTS_FILE" ]; then
 /* ============================================ */
 EOF
     echo "网口修改与唤醒代码已成功注入: $DTS_FILE"
-else
-    echo "警告：未找到 RAX3000M 的 DTS 文件！"
-fi
+done
 # ==========================================
