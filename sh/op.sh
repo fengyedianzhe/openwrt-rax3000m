@@ -355,20 +355,29 @@ echo " -----------------------------------------------------" >> package/base-fi
 
 
 # ==========================================
-# 自定义修改：完美适配 ZBT-Z8107AX 网口顺序与激活
+# 自定义修改：完美适配 ZBT-Z8107AX (网口+改名)
 # ==========================================
-echo "开始搜寻 DTS 文件并修复网口..."
+echo "开始搜寻 DTS 文件并定制专属固件..."
 
-# 使用 for 循环，把所有的 RAX3000M dts 文件（nand 和 emmc）统统修改一遍
+# 1. 修改默认的路由器主机名（Hostname）
+# 让你在电脑的“网络”设备列表中看到的是 ZBT-Z8107AX，而不是 ImmortalWrt
+sed -i "s/hostname='.*'/hostname='ZBT-Z8107AX'/g" package/base-files/files/bin/config_generate
+
+# 使用 for 循环，把所有的 RAX3000M dts 文件统统修改一遍
 for DTS_FILE in $(find target/linux/mediatek -name "mt7981b-cmcc-rax3000m*.dts"); do
     echo "发现目标文件: $DTS_FILE，正在执行修改..."
 
-    # 1. 解决名字反过来的问题：互换 lan1 和 lan3
+    # 2. 修改网页后台显示的“设备型号” (Model)
+    sed -i 's/model = "CMCC RAX3000M"/model = "ZBT Z8107AX"/g' $DTS_FILE
+    sed -i 's/model = "CMCC RAX3000M (NAND)"/model = "ZBT Z8107AX"/g' $DTS_FILE
+    sed -i 's/model = "CMCC RAX3000M (eMMC)"/model = "ZBT Z8107AX"/g' $DTS_FILE
+
+    # 3. 解决网口名字反过来的问题：互换 lan1 和 lan3
     sed -i 's/label = "lan1"/label = "lan_TMP"/g' $DTS_FILE
     sed -i 's/label = "lan3"/label = "lan1"/g' $DTS_FILE
     sed -i 's/label = "lan_TMP"/label = "lan3"/g' $DTS_FILE
     
-    # 2. 解决断口问题：强行通电唤醒被屏蔽的端口
+    # 4. 解决断口问题：强行通电唤醒被屏蔽的端口
     cat >> $DTS_FILE <<EOF
 
 /* ======= 强行唤醒被 RAX3000M 屏蔽的网口 ======= */
@@ -390,6 +399,6 @@ for DTS_FILE in $(find target/linux/mediatek -name "mt7981b-cmcc-rax3000m*.dts")
 };
 /* ============================================ */
 EOF
-    echo "网口修改与唤醒代码已成功注入: $DTS_FILE"
+    echo "网口与名称定制已成功注入: $DTS_FILE"
 done
 # ==========================================
