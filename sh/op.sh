@@ -352,3 +352,46 @@ echo "          |__|" >> package/base-files/files/etc/banner
 echo " -----------------------------------------------------" >> package/base-files/files/etc/banner
 echo "         %D ${date} by $OP_author                     " >> package/base-files/files/etc/banner
 echo " -----------------------------------------------------" >> package/base-files/files/etc/banner
+
+
+# ==========================================
+# 自定义修改：完美适配 ZBT-Z8107AX 网口顺序与激活
+# ==========================================
+echo "开始搜寻 DTS 文件并修复网口..."
+
+DTS_FILE=$(find target/linux/mediatek -name "mt7981b-cmcc-rax3000m*.dts" | head -n 1)
+
+if [ -f "$DTS_FILE" ]; then
+    # 1. 解决名字反过来的问题：互换 lan1 和 lan3
+    sed -i 's/label = "lan1"/label = "lan_TMP"/g' $DTS_FILE
+    sed -i 's/label = "lan3"/label = "lan1"/g' $DTS_FILE
+    sed -i 's/label = "lan_TMP"/label = "lan3"/g' $DTS_FILE
+    
+    # 2. 解决断口问题：强行通电唤醒被屏蔽的端口
+    # 注意：这里改成了 &switch，去掉了0，以适配 OpenWrt 源码规范
+    cat >> $DTS_FILE <<EOF
+
+/* ======= 强行唤醒被 RAX3000M 屏蔽的网口 ======= */
+&switch {
+	ports {
+		port@0 {
+			reg = <0>;
+			label = "lan4";
+		};
+		port@4 {
+			reg = <4>;
+			label = "wan";
+		};
+	};
+};
+
+&gmac1 {
+	status = "okay";
+};
+/* ============================================ */
+EOF
+    echo "网口修改与唤醒代码已成功注入: $DTS_FILE"
+else
+    echo "警告：未找到 RAX3000M 的 DTS 文件！"
+fi
+# ==========================================
