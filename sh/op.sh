@@ -355,50 +355,71 @@ echo " -----------------------------------------------------" >> package/base-fi
 
 
 # ==========================================
-# 自定义修改：完美适配 ZBT-Z8107AX (网口+改名)
+# 终极修复：底层覆写彻底征服 海博定制 路由器
 # ==========================================
-echo "开始搜寻 DTS 文件并定制专属固件..."
+echo "开始深度定制 海博定制 专属固件..."
 
-# 1. 修改默认的路由器主机名（Hostname）
-# 让你在电脑的“网络”设备列表中看到的是 ZBT-Z8107AX，而不是 ImmortalWrt
+# 1. 修改主机名
 sed -i "s/hostname='.*'/hostname='ZBT-Z8107AX'/g" package/base-files/files/bin/config_generate
 
-# 使用 for 循环，把所有的 RAX3000M dts 文件统统修改一遍
+# 2. 注入开机强制网络配置脚本 (将 lan4 强行加入网桥，锁定 eth1 为 WAN)
+mkdir -p package/base-files/files/etc/uci-defaults
+cat > package/base-files/files/etc/uci-defaults/99-zbt-network <<'EOF'
+#!/bin/sh
+uci -q delete network.@device[0].ports
+uci add_list network.@device[0].ports='lan1'
+uci add_list network.@device[0].ports='lan2'
+uci add_list network.@device[0].ports='lan3'
+uci add_list network.@device[0].ports='lan4'
+uci set network.wan.device='eth1'
+uci set network.wan6.device='eth1'
+uci commit network
+EOF
+chmod +x package/base-files/files/etc/uci-defaults/99-zbt-network
+
+# 3. 循环覆写所有的 RAX3000M DTS 文件
 for DTS_FILE in $(find target/linux/mediatek -name "mt7981b-cmcc-rax3000m*.dts"); do
-    echo "发现目标文件: $DTS_FILE，正在执行修改..."
+    echo "正在修复: $DTS_FILE"
 
-    # 2. 修改网页后台显示的“设备型号” (Model)
-    sed -i 's/model = "CMCC RAX3000M"/model = "ZBT Z8107AX"/g' $DTS_FILE
-    sed -i 's/model = "CMCC RAX3000M (NAND)"/model = "ZBT Z8107AX"/g' $DTS_FILE
-    sed -i 's/model = "CMCC RAX3000M (eMMC)"/model = "ZBT Z8107AX"/g' $DTS_FILE
-
-    # 3. 解决网口名字反过来的问题：互换 lan1 和 lan3
-    sed -i 's/label = "lan1"/label = "lan_TMP"/g' $DTS_FILE
-    sed -i 's/label = "lan3"/label = "lan1"/g' $DTS_FILE
-    sed -i 's/label = "lan_TMP"/label = "lan3"/g' $DTS_FILE
-    
-    # 4. 解决断口问题：强行通电唤醒被屏蔽的端口
+    # 4. 终极覆写：硬件型号与精确的物理引脚映射！
     cat >> $DTS_FILE <<EOF
 
-/* ======= 强行唤醒被 RAX3000M 屏蔽的网口 ======= */
+/* ======= 强行修改底层硬件型号 ======= */
+/ {
+	model = "海博公司sdwan定制";
+};
+
+/* ======= 覆写真实的网口映射 ======= */
 &switch {
 	ports {
 		port@0 {
 			reg = <0>;
-			label = "lan4";
+			label = "lan4"; /* 物理 LAN4 */
+		};
+		port@1 {
+			reg = <1>;
+			label = "lan2"; /* 物理 LAN2 */
+		};
+		port@2 {
+			reg = <2>;
+			label = "lan1"; /* 物理 LAN1 */
+		};
+		port@3 {
+			reg = <3>;
+			label = "lan3"; /* 物理 LAN3 */
 		};
 		port@4 {
 			reg = <4>;
-			label = "wan";
+			status = "disabled"; /* 屏蔽废弃的 wan 端口 */
 		};
 	};
 };
 
+/* ======= 唤醒真实的直通物理 WAN 口 ======= */
 &gmac1 {
 	status = "okay";
 };
-/* ============================================ */
 EOF
-    echo "网口与名称定制已成功注入: $DTS_FILE"
 done
+echo "海博定制 定制完成！"
 # ==========================================
