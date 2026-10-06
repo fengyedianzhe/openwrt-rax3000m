@@ -355,14 +355,21 @@ echo " -----------------------------------------------------" >> package/base-fi
 
 
 # ==========================================
-# 终极修复：底层覆写彻底征服 海博定制 路由器
+# 终极内核级覆写：海博定制 专属固件 (100%完美网口)
 # ==========================================
 echo "开始深度定制 海博定制 专属固件..."
 
 # 1. 修改主机名
 sed -i "s/hostname='.*'/hostname='ZBT-Z8107AX'/g" package/base-files/files/bin/config_generate
 
-# 2. 注入开机强制网络配置脚本 (将 lan4 强行加入网桥，锁定 eth1 为 WAN)
+# 2. 突破 OpenWrt 源码中针对 RAX3000M 写死的 3 个 LAN 口显示限制
+# 让网页后台的概览图完美显示 4 个 LAN 口
+NET_BOARD="target/linux/mediatek/filogic/base-files/etc/board.d/02_network"
+if [ -f "$NET_BOARD" ]; then
+    sed -i 's/lan1 lan2 lan3/lan1 lan2 lan3 lan4/g' $NET_BOARD
+fi
+
+# 3. 注入开机强制网络配置脚本
 mkdir -p package/base-files/files/etc/uci-defaults
 cat > package/base-files/files/etc/uci-defaults/99-zbt-network <<'EOF'
 #!/bin/sh
@@ -377,49 +384,46 @@ uci commit network
 EOF
 chmod +x package/base-files/files/etc/uci-defaults/99-zbt-network
 
-# 3. 循环覆写所有的 RAX3000M DTS 文件
-for DTS_FILE in $(find target/linux/mediatek -name "mt7981b-cmcc-rax3000m*.dts"); do
-    echo "正在修复: $DTS_FILE"
+# 4. 循环扫描并重构所有的 RAX3000M DTS与DTSI文件
+for FILE in $(find target/linux/mediatek -name "mt7981b-cmcc-rax3000m*.dts*"); do
+    echo "正在扫描并重构: $FILE"
 
-    # 4. 终极覆写：硬件型号与精确的物理引脚映射！
-    cat >> $DTS_FILE <<EOF
+    # 修改原有的机型名称
+    sed -i 's/model = "CMCC RAX3000M.*"/model = "海博定制"/g' $FILE
 
-/* ======= 强行修改底层硬件型号 ======= */
-/ {
-	model = "海博公司sdwan定制";
-};
+    # 使用 Perl 绝杀正则，按物理主板的真实顺序重构端口！
+    
+    # port@0 对应 物理LAN1
+    perl -0777 -pi -e 's/(?:[a-zA-Z0-9_]+:\s*)?port\@0\s*\{.*?\};/port\@0 {\n\t\t\treg = <0>;\n\t\t\tlabel = "lan1";\n\t\t};/s' $FILE
+    
+    # port@1 对应 物理LAN2
+    perl -0777 -pi -e 's/(?:[a-zA-Z0-9_]+:\s*)?port\@1\s*\{.*?\};/port\@1 {\n\t\t\treg = <1>;\n\t\t\tlabel = "lan2";\n\t\t};/s' $FILE
+    
+    # port@2 对应 物理LAN3
+    perl -0777 -pi -e 's/(?:[a-zA-Z0-9_]+:\s*)?port\@2\s*\{.*?\};/port\@2 {\n\t\t\treg = <2>;\n\t\t\tlabel = "lan3";\n\t\t};/s' $FILE
+    
+    # port@3 对应 物理LAN4
+    perl -0777 -pi -e 's/(?:[a-zA-Z0-9_]+:\s*)?port\@3\s*\{.*?\};/port\@3 {\n\t\t\treg = <3>;\n\t\t\tlabel = "lan4";\n\t\t};/s' $FILE
+    
+    # port@4 彻底废弃 (它是RAX3000M的老WAN口，但我们的WAN是eth1)
+    perl -0777 -pi -e 's/(?:[a-zA-Z0-9_]+:\s*)?port\@4\s*\{.*?\};/port\@4 {\n\t\t\treg = <4>;\n\t\t\tstatus = "disabled";\n\t\t};/s' $FILE
 
-/* ======= 覆写真实的网口映射 ======= */
-&switch {
-	ports {
-		port@0 {
-			reg = <0>;
-			label = "lan4"; /* 物理 LAN4 */
-		};
-		port@1 {
-			reg = <1>;
-			label = "lan2"; /* 物理 LAN2 */
-		};
-		port@2 {
-			reg = <2>;
-			label = "lan1"; /* 物理 LAN1 */
-		};
-		port@3 {
-			reg = <3>;
-			label = "lan3"; /* 物理 LAN3 */
-		};
-		port@4 {
-			reg = <4>;
-			status = "disabled"; /* 屏蔽废弃的 wan 端口 */
-		};
-	};
-};
+done
 
-/* ======= 唤醒真实的直通物理 WAN 口 ======= */
+# 5. 在最终的 .dts 文件末尾追加根节点覆写
+for DTS in $(find target/linux/mediatek -name "mt7981b-cmcc-rax3000m*.dts"); do
+    cat >> $DTS <<EOF
+
+/* ======= 强行唤醒真实的直通物理 WAN 口 ======= */
 &gmac1 {
 	status = "okay";
 };
+
+/* ======= 强行覆写底层硬件型号 ======= */
+/ {
+	model = "海博定制";
+};
 EOF
 done
-echo "海博定制 定制完成！"
+echo "海博定制 专属固件代码注入完毕！"
 # ==========================================
