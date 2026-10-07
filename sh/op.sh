@@ -355,19 +355,16 @@ echo " -----------------------------------------------------" >> package/base-fi
 
 
 # ==========================================
-# 终极内核级覆写：海博定制 专属固件 (100%完美网口)
+# 终极内核级覆写：海博定制 专属固件 (全灯光满血版)
 # ==========================================
 echo "开始深度定制 海博定制 专属固件..."
 
 # 1. 修改主机名
 sed -i "s/hostname='.*'/hostname='ZBT-Z8107AX'/g" package/base-files/files/bin/config_generate
 
-# 2. 突破 OpenWrt 源码中针对 RAX3000M 写死的 3 个 LAN 口显示限制
-# 让网页后台的概览图完美显示 4 个 LAN 口
+# 2. 突破 OpenWrt 源码针对 RAX3000M 写死的 3 个 LAN 口显示限制
 NET_BOARD="target/linux/mediatek/filogic/base-files/etc/board.d/02_network"
-if [ -f "$NET_BOARD" ]; then
-    sed -i 's/lan1 lan2 lan3/lan1 lan2 lan3 lan4/g' $NET_BOARD
-fi
+[ -f "$NET_BOARD" ] && sed -i 's/lan1 lan2 lan3/lan1 lan2 lan3 lan4/g' $NET_BOARD
 
 # 3. 注入开机强制网络配置脚本
 mkdir -p package/base-files/files/etc/uci-defaults
@@ -384,46 +381,84 @@ uci commit network
 EOF
 chmod +x package/base-files/files/etc/uci-defaults/99-zbt-network
 
-# 4. 循环扫描并重构所有的 RAX3000M DTS与DTSI文件
+# 4. 循环扫描并重构所有的 DTS 与 DTSI 文件
 for FILE in $(find target/linux/mediatek -name "mt7981b-cmcc-rax3000m*.dts*"); do
     echo "正在扫描并重构: $FILE"
 
-    # 修改原有的机型名称
     sed -i 's/model = "CMCC RAX3000M.*"/model = "海博定制"/g' $FILE
 
-    # 使用 Perl 绝杀正则，按物理主板的真实顺序重构端口！
-    
-    # port@0 对应 物理LAN1
+    # --- 网口重构 (100% 物理引脚对齐) ---
     perl -0777 -pi -e 's/(?:[a-zA-Z0-9_]+:\s*)?port\@0\s*\{.*?\};/port\@0 {\n\t\t\treg = <0>;\n\t\t\tlabel = "lan1";\n\t\t};/s' $FILE
-    
-    # port@1 对应 物理LAN2
     perl -0777 -pi -e 's/(?:[a-zA-Z0-9_]+:\s*)?port\@1\s*\{.*?\};/port\@1 {\n\t\t\treg = <1>;\n\t\t\tlabel = "lan2";\n\t\t};/s' $FILE
-    
-    # port@2 对应 物理LAN3
     perl -0777 -pi -e 's/(?:[a-zA-Z0-9_]+:\s*)?port\@2\s*\{.*?\};/port\@2 {\n\t\t\treg = <2>;\n\t\t\tlabel = "lan3";\n\t\t};/s' $FILE
-    
-    # port@3 对应 物理LAN4
     perl -0777 -pi -e 's/(?:[a-zA-Z0-9_]+:\s*)?port\@3\s*\{.*?\};/port\@3 {\n\t\t\treg = <3>;\n\t\t\tlabel = "lan4";\n\t\t};/s' $FILE
-    
-    # port@4 彻底废弃 (它是RAX3000M的老WAN口，但我们的WAN是eth1)
     perl -0777 -pi -e 's/(?:[a-zA-Z0-9_]+:\s*)?port\@4\s*\{.*?\};/port\@4 {\n\t\t\treg = <4>;\n\t\t\tstatus = "disabled";\n\t\t};/s' $FILE
+
+    # --- 灯光重构 (改造原有的 3 个引脚) ---
+    sed -i '/linux,default-trigger/d' $FILE
+    
+    # 原 red:status (GPIO 35) -> 绑定 5G 流量 (绿色闪烁)
+    perl -pi -e 's/label\s*=\s*"red:status";/label = "green:5g";\n\t\t\tlinux,default-trigger = "phy1tpt";/g' $FILE
+    
+    # 原 blue:status -> 改引脚为 11，变身 Wi-Fi 蓝灯 (常亮代表系统正常)
+    perl -pi -e 's/label\s*=\s*"blue:status";/label = "blue:wifi";\n\t\t\tlinux,default-trigger = "default-on";/g' $FILE
+    perl -pi -e 's/<\&pio 12 /<\&pio 11 /g' $FILE
+    
+    # 原 green:status -> 保持引脚为 9，变身 Wi-Fi 红灯 (默认熄灭备用)
+    perl -pi -e 's/label\s*=\s*"green:status";/label = "red:wifi";/g' $FILE
 
 done
 
-# 5. 在最终的 .dts 文件末尾追加根节点覆写
+# 5. 覆写根节点 (合并新增 2.4G 和 Wi-Fi绿灯，激活 WAN 口)
 for DTS in $(find target/linux/mediatek -name "mt7981b-cmcc-rax3000m*.dts"); do
     cat >> $DTS <<EOF
 
-/* ======= 强行唤醒真实的直通物理 WAN 口 ======= */
+/* ======= 强行唤醒直通物理 WAN 口 ======= */
 &gmac1 {
 	status = "okay";
 };
 
-/* ======= 强行覆写底层硬件型号 ======= */
+/* ======= 覆写硬件型号，并注入缺失的隐藏灯光 ======= */
 / {
 	model = "海博定制";
+	
+	leds {
+		compatible = "gpio-leds";
+		
+		/* 补齐隐藏的 2.4G 绿灯 (GPIO 34)，绑定 2.4G 流量闪烁 */
+		led_2g {
+			label = "green:2g";
+			gpios = <&pio 34 GPIO_ACTIVE_LOW>;
+			linux,default-trigger = "phy0tpt";
+		};
+		
+		/* 补齐隐藏的 Wi-Fi 绿灯 (GPIO 10)，默认熄灭供后台随时调用 */
+		led_wifi_green {
+			label = "green:wifi";
+			gpios = <&pio 10 GPIO_ACTIVE_LOW>;
+		};
+	};
 };
 EOF
 done
+
+# 6. 固件瘦身：释放存储空间
+echo "开始精简固件体积..."
+CONFIG_FILE=".config"
+[ ! -f "$CONFIG_FILE" ] && CONFIG_FILE=$(find . -maxdepth 2 -name "*.config" | head -n 1)
+
+if [ -f "$CONFIG_FILE" ]; then
+    sed -i 's/CONFIG_PACKAGE_luci-app-daed=y/# CONFIG_PACKAGE_luci-app-daed is not set/g' $CONFIG_FILE
+    sed -i 's/CONFIG_PACKAGE_daed=y/# CONFIG_PACKAGE_daed is not set/g' $CONFIG_FILE
+    sed -i 's/CONFIG_PACKAGE_luci-app-dockerman=y/# CONFIG_PACKAGE_luci-app-dockerman is not set/g' $CONFIG_FILE
+    sed -i 's/CONFIG_PACKAGE_docker=y/# CONFIG_PACKAGE_docker is not set/g' $CONFIG_FILE
+    sed -i 's/CONFIG_PACKAGE_dockerd=y/# CONFIG_PACKAGE_dockerd is not set/g' $CONFIG_FILE
+    sed -i 's/CONFIG_PACKAGE_luci-app-samba4=y/# CONFIG_PACKAGE_luci-app-samba4 is not set/g' $CONFIG_FILE
+    sed -i 's/CONFIG_PACKAGE_samba4=y/# CONFIG_PACKAGE_samba4 is not set/g' $CONFIG_FILE
+    echo "瘦身配置已注入！"
+else
+    rm -rf package/*/daed package/*/luci-app-daed
+fi
+
 echo "海博定制 专属固件代码注入完毕！"
 # ==========================================
