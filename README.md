@@ -1,3 +1,5 @@
+# 第三方路由器修改后的固件，与原先RAX3000M的路由器不适配。
+
 # RAX3000M OpenWrt  闭源驱动固件
 
 ## 📋 支持的设备
@@ -26,3 +28,5 @@
 
 ## sbwml
 - [部分补丁来自](https://github.com/sbwml/r4s_build_script)
+
+
