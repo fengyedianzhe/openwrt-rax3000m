@@ -353,9 +353,8 @@ echo " -----------------------------------------------------" >> package/base-fi
 echo "         %D ${date} by $OP_author                     " >> package/base-files/files/etc/banner
 echo " -----------------------------------------------------" >> package/base-files/files/etc/banner
 
-
 # ==========================================
-# 终极防崩溃内核级覆写：海博定制 专属固件 (全功能无删减版)
+# 终极原生覆写：海博定制 专属固件 (100%防语法报错)
 # ==========================================
 echo "开始深度定制 海博定制 专属固件..."
 
@@ -381,33 +380,46 @@ uci commit network
 EOF
 chmod +x package/base-files/files/etc/uci-defaults/99-zbt-network
 
-# 4. 循环扫描并重构所有的 DTS 与 DTSI 文件
+# 4. 循环扫描并安全处理原有的 DTS/DTSI 文件
 for FILE in $(find target/linux/mediatek -name "mt7981b-cmcc-rax3000m*.dts*"); do
-    echo "正在扫描并重构: $FILE"
+    echo "正在安全处理: $FILE"
 
+    # 修改型号名称
     sed -i 's/model = "CMCC RAX3000M.*"/model = "海博定制"/g' $FILE
 
-    # --- 核心修复 1：网口重构 ---
-    # 使用 Perl 递归正则安全切除旧端口，绝不留语法残余
-    perl -0777 -pi -e 's/(?:[a-zA-Z0-9_]+:\s*)?port\@\d+\s*\{((?:[^{}]++|\{(?1)\})++)\};//g' $FILE
-    # 注入绝对正确的物理网口配置
-    perl -0777 -pi -e 's/(ports\s*\{)/$1\n\t\tport\@0 {\n\t\t\treg = <0>;\n\t\t\tlabel = "lan1";\n\t\t};\n\t\tport\@1 {\n\t\t\treg = <1>;\n\t\t\tlabel = "lan2";\n\t\t};\n\t\tport\@2 {\n\t\t\treg = <2>;\n\t\t\tlabel = "lan3";\n\t\t};\n\t\tport\@3 {\n\t\t\treg = <3>;\n\t\t\tlabel = "lan4";\n\t\t};\n\t\tport\@4 {\n\t\t\treg = <4>;\n\t\t\tstatus = "disabled";\n\t\t};\n/g' $FILE
-
-    # --- 核心修复 2：灯光重构 ---
-    # 彻底删除源码中原有的旧 LED 配置块，消除冲突风险
-    perl -0777 -pi -e 's/(?:&|[a-zA-Z0-9_]+:\s*)?\bleds\s*\{((?:[^{}]++|\{(?1)\})++)\};//g' $FILE
+    # 安全中和原包中旧的 LED 标签和引脚（将原属性重命名为废弃属性，防止引脚占用冲突）
+    sed -i 's/label = "red:status"/_label = "red:status"/g' $FILE
+    sed -i 's/label = "blue:status"/_label = "blue:status"/g' $FILE
+    sed -i 's/label = "green:status"/_label = "green:status"/g' $FILE
+    sed -i 's/gpios = <&pio 9 /_gpios = <&pio 9 /g' $FILE
+    sed -i 's/gpios = <&pio 12 /_gpios = <&pio 12 /g' $FILE
+    sed -i 's/gpios = <&pio 35 /_gpios = <&pio 35 /g' $FILE
+    
+    # 清理所有的默认触发器，防止闪烁冲突
+    sed -i '/linux,default-trigger/d' $FILE
 done
 
-# 5. 覆写根节点 (合并全新灯光，激活 WAN 口)
+# 5. 使用原生追加法覆盖最终配置 (只对入口 .dts 追加，不破坏大括号格式)
 for DTS in $(find target/linux/mediatek -name "mt7981b-cmcc-rax3000m*.dts"); do
     cat >> $DTS <<EOF
 
-/* ======= 强行唤醒直通物理 WAN 口 ======= */
+/* ======= 1. 网口重映射 (原生追加覆盖，绝对安全) ======= */
+&switch {
+	ports {
+		port@0 { reg = <0>; label = "lan1"; };
+		port@1 { reg = <1>; label = "lan2"; };
+		port@2 { reg = <2>; label = "lan3"; };
+		port@3 { reg = <3>; label = "lan4"; };
+		port@4 { reg = <4>; status = "disabled"; };
+	};
+};
+
+/* ======= 2. 强行唤醒直通物理 WAN 口 ======= */
 &gmac1 {
 	status = "okay";
 };
 
-/* ======= 注入全新定制灯光 (完全重写) ======= */
+/* ======= 3. 注入全新定制灯光 ======= */
 / {
 	model = "海博定制";
 	
