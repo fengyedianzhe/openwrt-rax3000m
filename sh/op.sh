@@ -355,7 +355,7 @@ echo " -----------------------------------------------------" >> package/base-fi
 
 
 # ==========================================
-# 终极内核级覆写：海博定制 专属固件 (全灯光满血版)
+# 终极防崩溃内核级覆写：海博定制 专属固件 (全功能无删减版)
 # ==========================================
 echo "开始深度定制 海博定制 专属固件..."
 
@@ -387,29 +387,18 @@ for FILE in $(find target/linux/mediatek -name "mt7981b-cmcc-rax3000m*.dts*"); d
 
     sed -i 's/model = "CMCC RAX3000M.*"/model = "海博定制"/g' $FILE
 
-    # --- 网口重构 (100% 物理引脚对齐) ---
-    perl -0777 -pi -e 's/(?:[a-zA-Z0-9_]+:\s*)?port\@0\s*\{.*?\};/port\@0 {\n\t\t\treg = <0>;\n\t\t\tlabel = "lan1";\n\t\t};/s' $FILE
-    perl -0777 -pi -e 's/(?:[a-zA-Z0-9_]+:\s*)?port\@1\s*\{.*?\};/port\@1 {\n\t\t\treg = <1>;\n\t\t\tlabel = "lan2";\n\t\t};/s' $FILE
-    perl -0777 -pi -e 's/(?:[a-zA-Z0-9_]+:\s*)?port\@2\s*\{.*?\};/port\@2 {\n\t\t\treg = <2>;\n\t\t\tlabel = "lan3";\n\t\t};/s' $FILE
-    perl -0777 -pi -e 's/(?:[a-zA-Z0-9_]+:\s*)?port\@3\s*\{.*?\};/port\@3 {\n\t\t\treg = <3>;\n\t\t\tlabel = "lan4";\n\t\t};/s' $FILE
-    perl -0777 -pi -e 's/(?:[a-zA-Z0-9_]+:\s*)?port\@4\s*\{.*?\};/port\@4 {\n\t\t\treg = <4>;\n\t\t\tstatus = "disabled";\n\t\t};/s' $FILE
+    # --- 核心修复 1：网口重构 ---
+    # 使用 Perl 递归正则安全切除旧端口，绝不留语法残余
+    perl -0777 -pi -e 's/(?:[a-zA-Z0-9_]+:\s*)?port\@\d+\s*\{((?:[^{}]++|\{(?1)\})++)\};//g' $FILE
+    # 注入绝对正确的物理网口配置
+    perl -0777 -pi -e 's/(ports\s*\{)/$1\n\t\tport\@0 {\n\t\t\treg = <0>;\n\t\t\tlabel = "lan1";\n\t\t};\n\t\tport\@1 {\n\t\t\treg = <1>;\n\t\t\tlabel = "lan2";\n\t\t};\n\t\tport\@2 {\n\t\t\treg = <2>;\n\t\t\tlabel = "lan3";\n\t\t};\n\t\tport\@3 {\n\t\t\treg = <3>;\n\t\t\tlabel = "lan4";\n\t\t};\n\t\tport\@4 {\n\t\t\treg = <4>;\n\t\t\tstatus = "disabled";\n\t\t};\n/g' $FILE
 
-    # --- 灯光重构 (改造原有的 3 个引脚) ---
-    sed -i '/linux,default-trigger/d' $FILE
-    
-    # 原 red:status (GPIO 35) -> 绑定 5G 流量 (绿色闪烁)
-    perl -pi -e 's/label\s*=\s*"red:status";/label = "green:5g";\n\t\t\tlinux,default-trigger = "phy1tpt";/g' $FILE
-    
-    # 原 blue:status -> 改引脚为 11，变身 Wi-Fi 蓝灯 (常亮代表系统正常)
-    perl -pi -e 's/label\s*=\s*"blue:status";/label = "blue:wifi";\n\t\t\tlinux,default-trigger = "default-on";/g' $FILE
-    perl -pi -e 's/<\&pio 12 /<\&pio 11 /g' $FILE
-    
-    # 原 green:status -> 保持引脚为 9，变身 Wi-Fi 红灯 (默认熄灭备用)
-    perl -pi -e 's/label\s*=\s*"green:status";/label = "red:wifi";/g' $FILE
-
+    # --- 核心修复 2：灯光重构 ---
+    # 彻底删除源码中原有的旧 LED 配置块，消除冲突风险
+    perl -0777 -pi -e 's/(?:&|[a-zA-Z0-9_]+:\s*)?\bleds\s*\{((?:[^{}]++|\{(?1)\})++)\};//g' $FILE
 done
 
-# 5. 覆写根节点 (合并新增 2.4G 和 Wi-Fi绿灯，激活 WAN 口)
+# 5. 覆写根节点 (合并全新灯光，激活 WAN 口)
 for DTS in $(find target/linux/mediatek -name "mt7981b-cmcc-rax3000m*.dts"); do
     cat >> $DTS <<EOF
 
@@ -418,47 +407,42 @@ for DTS in $(find target/linux/mediatek -name "mt7981b-cmcc-rax3000m*.dts"); do
 	status = "okay";
 };
 
-/* ======= 覆写硬件型号，并注入缺失的隐藏灯光 ======= */
+/* ======= 注入全新定制灯光 (完全重写) ======= */
 / {
 	model = "海博定制";
 	
 	leds {
 		compatible = "gpio-leds";
 		
-		/* 补齐隐藏的 2.4G 绿灯 (GPIO 34)，绑定 2.4G 流量闪烁 */
-		led_2g {
-			label = "green:2g";
-			gpios = <&pio 34 GPIO_ACTIVE_LOW>;
-			linux,default-trigger = "phy0tpt";
+		led_25g {
+			label = "green:2.5g";
+			gpios = <&pio 34 1>;
 		};
 		
-		/* 补齐隐藏的 Wi-Fi 绿灯 (GPIO 10)，默认熄灭供后台随时调用 */
+		led_5g {
+			label = "green:5g";
+			gpios = <&pio 35 1>;
+		};
+		
+		led_wifi_blue {
+			label = "blue:wifi";
+			gpios = <&pio 11 1>;
+			linux,default-trigger = "default-on";
+		};
+		
+		led_wifi_red {
+			label = "red:wifi";
+			gpios = <&pio 9 1>;
+		};
+		
 		led_wifi_green {
 			label = "green:wifi";
-			gpios = <&pio 10 GPIO_ACTIVE_LOW>;
+			gpios = <&pio 10 1>;
 		};
 	};
 };
 EOF
 done
-
-# 6. 固件瘦身：释放存储空间
-echo "开始精简固件体积..."
-CONFIG_FILE=".config"
-[ ! -f "$CONFIG_FILE" ] && CONFIG_FILE=$(find . -maxdepth 2 -name "*.config" | head -n 1)
-
-if [ -f "$CONFIG_FILE" ]; then
-    sed -i 's/CONFIG_PACKAGE_luci-app-daed=y/# CONFIG_PACKAGE_luci-app-daed is not set/g' $CONFIG_FILE
-    sed -i 's/CONFIG_PACKAGE_daed=y/# CONFIG_PACKAGE_daed is not set/g' $CONFIG_FILE
-    sed -i 's/CONFIG_PACKAGE_luci-app-dockerman=y/# CONFIG_PACKAGE_luci-app-dockerman is not set/g' $CONFIG_FILE
-    sed -i 's/CONFIG_PACKAGE_docker=y/# CONFIG_PACKAGE_docker is not set/g' $CONFIG_FILE
-    sed -i 's/CONFIG_PACKAGE_dockerd=y/# CONFIG_PACKAGE_dockerd is not set/g' $CONFIG_FILE
-    sed -i 's/CONFIG_PACKAGE_luci-app-samba4=y/# CONFIG_PACKAGE_luci-app-samba4 is not set/g' $CONFIG_FILE
-    sed -i 's/CONFIG_PACKAGE_samba4=y/# CONFIG_PACKAGE_samba4 is not set/g' $CONFIG_FILE
-    echo "瘦身配置已注入！"
-else
-    rm -rf package/*/daed package/*/luci-app-daed
-fi
 
 echo "海博定制 专属固件代码注入完毕！"
 # ==========================================
