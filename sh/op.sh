@@ -384,16 +384,18 @@ chmod +x package/base-files/files/etc/uci-defaults/99-zbt-network
 for FILE in $(find target/linux/mediatek -name "mt7981b-cmcc-rax3000m*.dts*"); do
     echo "正在安全处理: $FILE"
 
-    # 修改型号名称
-    sed -i 's/model = "CMCC RAX3000M.*"/model = "海博定制"/g' $FILE
+    # 修复一：安全修改型号，确保必定带有分号，绝不吞噬引发下一行报错
+    sed -i 's/model = "CMCC RAX3000M.*/model = "海博定制";/g' $FILE
 
-    # 安全中和原包中旧的 LED 标签和引脚（将原属性重命名为废弃属性，防止引脚占用冲突）
-    sed -i 's/label = "red:status"/_label = "red:status"/g' $FILE
-    sed -i 's/label = "blue:status"/_label = "blue:status"/g' $FILE
-    sed -i 's/label = "green:status"/_label = "green:status"/g' $FILE
-    sed -i 's/gpios = <&pio 9 /_gpios = <&pio 9 /g' $FILE
-    sed -i 's/gpios = <&pio 12 /_gpios = <&pio 12 /g' $FILE
-    sed -i 's/gpios = <&pio 35 /_gpios = <&pio 35 /g' $FILE
+    # 修复二：极其安全地废弃旧灯光！不改名，直接替换为 status = "disabled"
+    sed -i 's/.*<&pio 9 .*/\t\t\tstatus = "disabled";/g' $FILE
+    sed -i 's/.*<&pio 12 .*/\t\t\tstatus = "disabled";/g' $FILE
+    sed -i 's/.*<&pio 35 .*/\t\t\tstatus = "disabled";/g' $FILE
+    
+    # 顺手把旧标签改掉，防止系统后台重名冲突
+    sed -i 's/label = "red:status";/label = "disabled:red";/g' $FILE
+    sed -i 's/label = "blue:status";/label = "disabled:blue";/g' $FILE
+    sed -i 's/label = "green:status";/label = "disabled:green";/g' $FILE
     
     # 清理所有的默认触发器，防止闪烁冲突
     sed -i '/linux,default-trigger/d' $FILE
@@ -419,10 +421,8 @@ for DTS in $(find target/linux/mediatek -name "mt7981b-cmcc-rax3000m*.dts"); do
 	status = "okay";
 };
 
-/* ======= 3. 注入全新定制灯光 ======= */
+/* ======= 3. 注入全新定制灯光 (完全重写) ======= */
 / {
-	model = "海博定制";
-	
 	leds {
 		compatible = "gpio-leds";
 		
@@ -457,4 +457,5 @@ EOF
 done
 
 echo "海博定制 专属固件代码注入完毕！"
+# ==========================================
 # ==========================================
